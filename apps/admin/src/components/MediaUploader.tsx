@@ -12,37 +12,56 @@ interface MediaUploaderProps {
 }
 
 const MAX_MB = 10;
+const FORM_MAX_MB = 4;
 
-function isVideoUrl(url: string, file?: File) {
-  if (file?.type.startsWith("video/")) return true;
-  return /\.(mp4|webm|mov)$/i.test(url);
+function isVideo(file: File, url?: string) {
+  if (file.type.startsWith("video/")) return true;
+  if (url && /\.(mp4|webm|mov)$/i.test(url)) return true;
+  return false;
 }
 
 export function MediaUploader({ images, videos, onImagesChange, onVideosChange }: MediaUploaderProps) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
-  async function uploadFile(file: File): Promise<{ url: string; type: string } | null> {
+  async function uploadViaForm(file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/upload", { method: "POST", body: formData, credentials: "same-origin" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Yuklash xatosi");
+    return data as { url: string; type: string };
+  }
+
+  async function uploadViaBlobClient(file: File) {
+    const blob = await upload(file.name, file, {
+      access: "public",
+      handleUploadUrl: "/api/upload",
+    });
+    return { url: blob.url, type: isVideo(file, blob.url) ? "video" : "image" };
+  }
+
+  async function uploadFile(file: File) {
     if (file.size > MAX_MB * 1024 * 1024) {
       throw new Error(`Fayl juda katta. Maksimum ${MAX_MB}MB`);
     }
 
-    const isProd = window.location.hostname !== "localhost";
-
-    if (isProd) {
-      const blob = await upload(file.name, file, {
-        access: "public",
-        handleUploadUrl: "/api/upload",
-      });
-      return { url: blob.url, type: isVideoUrl(blob.url, file) ? "video" : "image" };
+    // Kichik fayllar — oddiy form upload (ishonchli)
+    if (file.size <= FORM_MAX_MB * 1024 * 1024) {
+      try {
+        return await uploadViaForm(file);
+      } catch (formErr) {
+        // Form ishlamasa blob client sinab ko'rish
+        try {
+          return await uploadViaBlobClient(file);
+        } catch {
+          throw formErr;
+        }
+      }
     }
 
-    const formData = new FormData();
-    formData.append("file", file);
-    const res = await fetch("/api/upload", { method: "POST", body: formData });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Yuklash xatosi");
-    return data;
+    // Katta fayllar — blob client upload
+    return await uploadViaBlobClient(file);
   }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -58,7 +77,6 @@ export function MediaUploader({ images, videos, onImagesChange, onVideosChange }
     for (const file of Array.from(files)) {
       try {
         const data = await uploadFile(file);
-        if (!data) continue;
         if (data.type === "video") {
           newVideos.push(data.url);
         } else {
@@ -82,8 +100,17 @@ export function MediaUploader({ images, videos, onImagesChange, onVideosChange }
         <span className="mt-2 text-sm text-gray-500">
           {uploading ? "Yuklanmoqda..." : "Rasm yoki video yuklash (telefon/kompyuter)"}
         </span>
-        <span className="mt-1 text-xs text-gray-400">JPG, PNG, WEBP, MP4 — maks. {MAX_MB}MB</span>
-        <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm" multiple className="hidden" onChange={handleUpload} disabled={uploading} />
+        <span className="mt-1 text-xs text-gray-400">
+          JPG, PNG, WEBP, MP4 — maks. {MAX_MB}MB (tavsiya: {FORM_MAX_MB}MB gacha)
+        </span>
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm"
+          multiple
+          className="hidden"
+          onChange={handleUpload}
+          disabled={uploading}
+        />
       </label>
 
       {error && (
@@ -100,8 +127,11 @@ export function MediaUploader({ images, videos, onImagesChange, onVideosChange }
             {images.map((url, i) => (
               <div key={i} className="group relative aspect-video overflow-hidden rounded-lg border">
                 <img src={url} alt="" className="h-full w-full object-cover" />
-                <button type="button" onClick={() => onImagesChange(images.filter((_, j) => j !== i))}
-                  className="absolute right-1 top-1 rounded-full bg-red-500 p-1 text-white opacity-0 group-hover:opacity-100">
+                <button
+                  type="button"
+                  onClick={() => onImagesChange(images.filter((_, j) => j !== i))}
+                  className="absolute right-1 top-1 rounded-full bg-red-500 p-1 text-white opacity-0 group-hover:opacity-100"
+                >
                   <X className="h-3 w-3" />
                 </button>
               </div>
@@ -117,8 +147,11 @@ export function MediaUploader({ images, videos, onImagesChange, onVideosChange }
             {videos.map((url, i) => (
               <div key={i} className="group relative">
                 <video src={url} controls className="w-full rounded-lg" />
-                <button type="button" onClick={() => onVideosChange(videos.filter((_, j) => j !== i))}
-                  className="absolute right-2 top-2 rounded-full bg-red-500 p-1 text-white">
+                <button
+                  type="button"
+                  onClick={() => onVideosChange(videos.filter((_, j) => j !== i))}
+                  className="absolute right-2 top-2 rounded-full bg-red-500 p-1 text-white"
+                >
                   <X className="h-3 w-3" />
                 </button>
               </div>

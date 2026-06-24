@@ -5,7 +5,8 @@ import { put } from "@vercel/blob";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { getAdminId } from "@/lib/auth";
 
-const MAX_SIZE = 10 * 1024 * 1024; // 10MB — Vercel uchun xavfsiz limit
+const MAX_SIZE = 10 * 1024 * 1024;
+const MAX_FORM_SIZE = process.env.VERCEL ? 4.5 * 1024 * 1024 : MAX_SIZE;
 
 const ALLOWED = [
   "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif",
@@ -23,12 +24,9 @@ function getMimeType(file: File): string {
 }
 
 export async function POST(req: NextRequest) {
-  const adminId = await getAdminId();
-  if (!adminId) return NextResponse.json({ error: "Ruxsat yo'q" }, { status: 401 });
-
   const contentType = req.headers.get("content-type") || "";
 
-  // Vercel Blob — client-side upload (production)
+  // Vercel Blob client upload
   if (contentType.includes("application/json")) {
     if (!process.env.BLOB_READ_WRITE_TOKEN) {
       return NextResponse.json({
@@ -41,26 +39,38 @@ export async function POST(req: NextRequest) {
       const jsonResponse = await handleUpload({
         body,
         request: req,
-        onBeforeGenerateToken: async () => ({
-          allowedContentTypes: ALLOWED,
-          maximumSizeInBytes: MAX_SIZE,
-          addRandomSuffix: true,
-        }),
+        onBeforeGenerateToken: async () => {
+          const adminId = await getAdminId();
+          if (!adminId) throw new Error("Ruxsat yo'q. Qayta login qiling.");
+          return {
+            allowedContentTypes: ALLOWED,
+            maximumSizeInBytes: MAX_SIZE,
+            addRandomSuffix: true,
+          };
+        },
         onUploadCompleted: async () => {},
       });
       return NextResponse.json(jsonResponse);
     } catch (error) {
       console.error("Blob upload error:", error);
-      return NextResponse.json({ error: "Blob yuklash xatosi" }, { status: 500 });
+      const message = error instanceof Error ? error.message : "Blob yuklash xatosi";
+      return NextResponse.json({ error: message }, { status: 400 });
     }
   }
 
-  // Form upload — local development
+  // Form upload
+  const adminId = await getAdminId();
+  if (!adminId) return NextResponse.json({ error: "Ruxsat yo'q" }, { status: 401 });
+
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     if (!file) return NextResponse.json({ error: "Fayl topilmadi" }, { status: 400 });
-    if (file.size > MAX_SIZE) return NextResponse.json({ error: `Fayl juda katta (max ${MAX_SIZE / 1024 / 1024}MB)` }, { status: 400 });
+    if (file.size > MAX_FORM_SIZE) {
+      return NextResponse.json({
+        error: `Fayl juda katta (max ${Math.floor(MAX_FORM_SIZE / 1024 / 1024)}MB). Kichikroq rasm tanlang.`,
+      }, { status: 400 });
+    }
 
     const mime = getMimeType(file);
     if (!ALLOWED.includes(mime)) {
@@ -68,22 +78,19 @@ export async function POST(req: NextRequest) {
     }
 
     const ext = file.name.split(".").pop() || "bin";
-    const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const filename = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     const isVideo = mime.startsWith("video/");
 
-    if (process.env.BLOB_READ_WRITE_TOKEN) {
-      const blob = await put(`uploads/${filename}`, file, { access: "public" });
-      return NextResponse.json({ url: blob.url, type: isVideo ? "video" : "image" });
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      return NextResponse.json({
+        error: "BLOB_READ_WRITE_TOKEN topilmadi. Vercel Storage → Blob ni imantour-admin ga ulang.",
+      }, { status: 500 });
     }
 
-    const uploadDir = path.join(process.cwd(), "..", "..", "uploads");
-    await mkdir(uploadDir, { recursive: true });
-    const buffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(path.join(uploadDir, filename), buffer);
-
-    return NextResponse.json({ url: `/uploads/${filename}`, type: isVideo ? "video" : "image" });
+    const blob = await put(filename, file, { access: "public" });
+    return NextResponse.json({ url: blob.url, type: isVideo ? "video" : "image" });
   } catch (error) {
     console.error("Upload error:", error);
-    return NextResponse.json({ error: "Yuklash xatosi. Vercel Blob ulanganini tekshiring." }, { status: 500 });
+    return NextResponse.json({ error: "Yuklash xatosi. Faylni kichikroq qilib qayta urinib ko'ring." }, { status: 500 });
   }
 }
