@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Upload, X, Image as ImageIcon, Video } from "lucide-react";
+import { upload } from "@vercel/blob/client";
+import { Upload, X, Image as ImageIcon, Video, AlertCircle } from "lucide-react";
 
 interface MediaUploaderProps {
   images: string[];
@@ -10,28 +11,66 @@ interface MediaUploaderProps {
   onVideosChange: (videos: string[]) => void;
 }
 
+const MAX_MB = 10;
+
+function isVideoUrl(url: string, file?: File) {
+  if (file?.type.startsWith("video/")) return true;
+  return /\.(mp4|webm|mov)$/i.test(url);
+}
+
 export function MediaUploader({ images, videos, onImagesChange, onVideosChange }: MediaUploaderProps) {
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function uploadFile(file: File): Promise<{ url: string; type: string } | null> {
+    if (file.size > MAX_MB * 1024 * 1024) {
+      throw new Error(`Fayl juda katta. Maksimum ${MAX_MB}MB`);
+    }
+
+    const isProd = window.location.hostname !== "localhost";
+
+    if (isProd) {
+      const blob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/upload",
+      });
+      return { url: blob.url, type: isVideoUrl(blob.url, file) ? "video" : "image" };
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/upload", { method: "POST", body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Yuklash xatosi");
+    return data;
+  }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files) return;
 
     setUploading(true);
-    for (const file of Array.from(files)) {
-      const formData = new FormData();
-      formData.append("file", file);
+    setError("");
 
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      if (res.ok) {
-        const data = await res.json();
+    const newImages = [...images];
+    const newVideos = [...videos];
+
+    for (const file of Array.from(files)) {
+      try {
+        const data = await uploadFile(file);
+        if (!data) continue;
         if (data.type === "video") {
-          onVideosChange([...videos, data.url]);
+          newVideos.push(data.url);
         } else {
-          onImagesChange([...images, data.url]);
+          newImages.push(data.url);
         }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Yuklash xatosi");
       }
     }
+
+    onImagesChange(newImages);
+    onVideosChange(newVideos);
     setUploading(false);
     e.target.value = "";
   }
@@ -43,8 +82,16 @@ export function MediaUploader({ images, videos, onImagesChange, onVideosChange }
         <span className="mt-2 text-sm text-gray-500">
           {uploading ? "Yuklanmoqda..." : "Rasm yoki video yuklash (telefon/kompyuter)"}
         </span>
-        <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleUpload} disabled={uploading} />
+        <span className="mt-1 text-xs text-gray-400">JPG, PNG, WEBP, MP4 — maks. {MAX_MB}MB</span>
+        <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm" multiple className="hidden" onChange={handleUpload} disabled={uploading} />
       </label>
+
+      {error && (
+        <div className="mt-3 flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          {error}
+        </div>
+      )}
 
       {images.length > 0 && (
         <div className="mt-4">
