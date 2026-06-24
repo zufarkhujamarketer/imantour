@@ -1,0 +1,6 @@
+{
+  "name": "@imantour/shared",
+  "version": "1.0.0",
+  "main": "./src/utils.ts",
+  "types": "./src/utils.ts"
+}

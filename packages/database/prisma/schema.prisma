@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  createdAt DateTime @default(now())
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  image       String?
+  order       Int      @default(0)
+  tours       Tour[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Tour {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  description String
+  shortDesc   String?
+  price       Float
+  currency    String   @default("UZS")
+  duration    String
+  destination String
+  maxPeople   Int      @default(10)
+  featured    Boolean  @default(false)
+  published   Boolean  @default(true)
+  images      String   @default("[]")
+  videos      String   @default("[]")
+  includes    String   @default("[]")
+  excludes    String   @default("[]")
+  itinerary   String   @default("[]")
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  bookings    Booking[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model BlogPost {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  excerpt     String?
+  content     String
+  coverImage  String?
+  published   Boolean  @default(false)
+  author      String   @default("ImanTour")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Booking {
+  id        String   @id @default(cuid())
+  tourId    String
+  tour      Tour     @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  fullName  String
+  phone     String
+  email     String?
+  people    Int      @default(1)
+  date      String?
+  message   String?
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+}
+
+model SiteSettings {
+  id          String @id @default("main")
+  phone       String @default("+998 90 123 45 67")
+  email       String @default("info@imantour.uz")
+  address     String @default("Toshkent, O'zbekiston")
+  telegram    String @default("@imantour")
+  instagram   String @default("@imantour")
+  facebook    String @default("imantour")
+  mapLat      Float  @default(41.2995)
+  mapLng      Float  @default(69.2401)
+  workingHours String @default("Dushanba - Juma: 09:00 - 18:00")
+  aboutText   String @default("ImanTour — O'zbekiston va dunyo bo'ylab unutilmas sayohatlar")
+}
