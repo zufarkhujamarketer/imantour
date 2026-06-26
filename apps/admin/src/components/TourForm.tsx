@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { MediaUploader } from "./MediaUploader";
-import { parseJsonArray } from "@imantour/shared/src/utils";
+import { parseJsonArray, type ItineraryDay } from "@imantour/shared/src/utils";
 
 interface Category { id: string; name: string }
 
@@ -10,6 +10,9 @@ export function TourForm({ tour }: { tour?: Record<string, unknown> }) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [images, setImages] = useState<string[]>(tour ? parseJsonArray(tour.images as string) : []);
   const [videos, setVideos] = useState<string[]>(tour ? parseJsonArray(tour.videos as string) : []);
+  const [itinerary, setItinerary] = useState<ItineraryDay[]>(
+    tour ? parseJsonArray<ItineraryDay>(tour.itinerary as string) : []
+  );
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -39,6 +42,7 @@ export function TourForm({ tour }: { tour?: Record<string, unknown> }) {
       videos,
       includes,
       excludes,
+      itinerary,
     };
 
     await fetch("/api/tours", {
@@ -70,6 +74,78 @@ export function TourForm({ tour }: { tour?: Record<string, unknown> }) {
       </div>
 
       <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="label mb-0">Kunlik dastur (Itinerary)</label>
+          <button
+            type="button"
+            onClick={() =>
+              setItinerary([
+                ...itinerary,
+                { day: itinerary.length + 1, title: "", desc: "" },
+              ])
+            }
+            className="text-sm font-semibold text-brand-600 hover:text-brand-700"
+          >
+            + Kun qo'shish
+          </button>
+        </div>
+        <div className="space-y-4">
+          {itinerary.map((item, index) => (
+            <div key={index} className="rounded-lg border bg-gray-50 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-bold text-gray-700">
+                  {index + 1}-kun
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = itinerary.filter((_, i) => i !== index);
+                    setItinerary(next.map((d, i) => ({ ...d, day: i + 1 })));
+                  }}
+                  className="text-xs font-medium text-red-600 hover:underline"
+                >
+                  O'chirish
+                </button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <input
+                    type="text"
+                    placeholder="Sarlavha (masalan: Toshkent — Samarqand)"
+                    value={item.title}
+                    onChange={(e) => {
+                      const next = [...itinerary];
+                      next[index].title = e.target.value;
+                      setItinerary(next);
+                    }}
+                    required
+                    className="input bg-white"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <textarea
+                    placeholder="Batafsil ma'lumot (boradigan joylar, reja...)"
+                    value={item.desc}
+                    onChange={(e) => {
+                      const next = [...itinerary];
+                      next[index].desc = e.target.value;
+                      setItinerary(next);
+                    }}
+                    rows={2}
+                    required
+                    className="input bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+          {itinerary.length === 0 && (
+            <p className="text-sm text-gray-500 italic py-2">Hozircha kunlik dastur yo'q. "+ Kun qo'shish" tugmasini bosing.</p>
+          )}
+        </div>
+      </div>
+
+      <div>
         <label className="label">Rasm va videolar</label>
         <MediaUploader images={images} videos={videos} onImagesChange={setImages} onVideosChange={setVideos} />
       </div>
@@ -83,3 +159,4 @@ export function TourForm({ tour }: { tour?: Record<string, unknown> }) {
     </form>
   );
 }
+
