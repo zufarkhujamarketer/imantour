@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
     });
 
     await sendTelegramNotification({
+      bookingId: booking.id,
       tourTitle: tour.title,
       fullName,
       phone,

@@ -1,4 +1,5 @@
 interface BookingNotification {
+  bookingId?: string;
   tourTitle: string;
   fullName: string;
   phone: string;
@@ -28,12 +29,24 @@ export async function sendTelegramNotification(data: BookingNotification) {
     data.date ? `📅 *Sana:* ${escapeMarkdown(data.date)}` : null,
     data.message ? `💬 *Xabar:* ${escapeMarkdown(data.message)}` : null,
     "",
+    "⏳ *HOLAT: KUTILMOQDA*",
     `⏰ ${new Date().toLocaleString("uz-UZ")}`,
   ]
     .filter(Boolean)
     .join("\n");
 
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
+
+  const reply_markup = data.bookingId
+    ? {
+        inline_keyboard: [
+          [
+            { text: "✅ Tasdiqlash", callback_data: `confirm:${data.bookingId}` },
+            { text: "❌ Bekor qilish", callback_data: `cancel:${data.bookingId}` },
+          ],
+        ],
+      }
+    : undefined;
 
   await fetch(url, {
     method: "POST",
@@ -42,6 +55,7 @@ export async function sendTelegramNotification(data: BookingNotification) {
       chat_id: chatId,
       text,
       parse_mode: "Markdown",
+      reply_markup,
     }),
   });
 }
