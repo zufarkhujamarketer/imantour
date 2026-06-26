@@ -38,20 +38,24 @@ export async function POST(req: NextRequest) {
         });
 
         if (chatId && messageId) {
+          const plainStatusLabel = action === "confirm" ? "✅ HOLAT: TASDIQLANDI" : "❌ HOLAT: BEKOR QILINDI";
           const updatedText = text.includes("HOLAT: KUTILMOQDA")
-            ? text.replace(/⏳ \*HOLAT: KUTILMOQDA\*/g, statusLabel)
-            : `${text}\n\n${statusLabel}`;
+            ? text.replace(/⏳ HOLAT: KUTILMOQDA/g, plainStatusLabel)
+            : `${text}\n\n${plainStatusLabel}`;
 
-          await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+          const res = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               chat_id: chatId,
               message_id: messageId,
               text: updatedText,
-              parse_mode: "Markdown",
             }),
           });
+
+          if (!res.ok) {
+            console.error("Telegram editMessageText error:", await res.text());
+          }
         }
       }
     }
